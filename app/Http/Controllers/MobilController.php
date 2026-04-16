@@ -9,6 +9,7 @@ use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 
+
 class MobilController extends Controller
 {
    public function index()
@@ -206,6 +207,76 @@ public function store(Request $request)
     /**
      * Menampilkan detail mobil sebelum disewa.
      */
-   
+   /**
+     * Menghapus armada beserta file gambar/videonya.
+     */
+    public function destroy($id)
+    {
+        try {
+            DB::beginTransaction();
+            
+            $mobil = Mobil::with('units')->findOrFail($id);
+
+            // 1. Hapus Foto Utama & Video dari Storage
+            if ($mobil->gambar) { Storage::disk('public')->delete($mobil->gambar); }
+            if ($mobil->video) { Storage::disk('public')->delete($mobil->video); }
+
+            // 2. Hapus Foto-foto Unit dari Storage
+            foreach ($mobil->units as $unit) {
+                if ($unit->foto_unit) {
+                    Storage::disk('public')->delete($unit->foto_unit);
+                }
+            }
+
+            // 3. Hapus data dari Database (Unit akan ikut terhapus jika pakai Cascade Delete)
+            $mobil->delete();
+
+            DB::commit();
+            return response()->json(['message' => 'Armada berhasil dihapus! ❄️'], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Gagal menghapus: ' . $e->getMessage()], 500);
+        }
+    }
+
+public function cekStatus(Request $request)
+{
+    // Validasi input dulu biar gak kosong
+    if (!$request->nopol) {
+        return response()->json(['success' => false, 'message' => 'Masukkan plat nomor!']);
+    }
+
+    // Ambil input dan bersihkan spasi
+    $input = str_replace(' ', '', $request->nopol);
+
+    try {
+        // Cari di tabel mobil_units berdasarkan kolom 'no_polisi'
+        $unit = \App\Models\MobilUnit::with('mobil')
+                ->whereRaw("REPLACE(no_polisi, ' ', '') = ?", [$input])
+                ->first();
+
+        if ($unit) {
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'no_polisi' => $unit->no_polisi,
+                    'warna'     => $unit->warna,
+                    'status'    => $unit->status,
+                    'merek'     => $unit->mobil->merek ?? 'Unit',
+                    'model'     => $unit->mobil->model ?? '',
+                    // Gunakan optional() agar tidak error jika updated_at null
+                    'updated_at' => optional($unit->updated_at)->format('d M Y, H:i') ?? '-'
+                ]
+            ]);
+        }
+
+        return response()->json(['success' => false, 'message' => 'Unit tidak ditemukan']);
+
+    } catch (\Exception $e) {
+        // Jika ada error database, tidak langsung nampil error kasar ke user
+        return response()->json(['success' => false, 'message' => 'Terjadi kesalahan sistem.']);
+    }
+}
     // Fungsi lain (index, create, edit, show) tetap seperti kode awal kamu karena sudah cukup baik
 }
