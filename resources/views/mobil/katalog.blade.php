@@ -221,43 +221,54 @@
 
         <div class="row" id="mobilGrid">
             @forelse($mobils as $mobil)
-                @php
-                    $tersedia = $mobil->units->where('status', 'tersedia')->count();
-                    $diskonRedeem = 0;
+               @php
+    $tersedia = $mobil->units->where('status', 'tersedia')->count();
+    $diskonRedeem = 0;
 
-                    // Hitung diskon promo jika ada
-                    if ($appliedPromo) {
-                        $pType = $appliedPromo['type'];
-                        $pTargetId = (int)$appliedPromo['target_id'];
+    // Hitung diskon promo jika ada di session DAN tidak sedang dipaksa lepas
+    if ($appliedPromo && !session('promo_removed')) {
+        $pType = $appliedPromo['type'];
+        $pTargetId = (int)$appliedPromo['target_id'];
 
-                        if ($pType == 'all' || 
-                           ($pType == 'category' && (int)$mobil->category_id === $pTargetId) || 
-                           ($pType == 'unit' && (int)$mobil->id === $pTargetId)) {
-                            $diskonRedeem = (int)$appliedPromo['discount'];
-                        }
-                    }
+        // Cek apakah promo berlaku untuk mobil ini (berdasarkan kategori atau unit spesifik)
+        if ($pType == 'all' || 
+           ($pType == 'category' && (int)$mobil->category_id === $pTargetId) || 
+           ($pType == 'unit' && (int)$mobil->id === $pTargetId)) {
+            $diskonRedeem = (int)$appliedPromo['discount'];
+        }
+    }
 
-                    $hargaAwal = $mobil->harga_sewa;
-                    $hargaSetelahUnit = $hargaAwal - ($hargaAwal * ($mobil->diskon / 100));
-                    $hargaAkhir = $hargaSetelahUnit - ($hargaSetelahUnit * ($diskonRedeem / 100));
-                @endphp
+    // Logika Perhitungan Harga
+    $hargaAwal = $mobil->harga_sewa;
+    
+    // 1. Potongan dari diskon bawaan unit mobil
+    $hargaSetelahUnit = $hargaAwal - ($hargaAwal * ($mobil->diskon / 100));
+    
+    // 2. Potongan tambahan dari kode promo (Redeem) jika ada
+    $hargaAkhir = $hargaSetelahUnit - ($hargaSetelahUnit * ($diskonRedeem / 100));
+    
+    // 3. Status Rusak (untuk keperluan label nanti)
+    $isRusak = $mobil->units->where('status', 'rusak')->count() > 0 && $tersedia == 0;
+@endphp
 
                 <div class="col-xl-3 col-lg-4 col-md-6 mb-4 mobil-item" 
                      data-category="{{ strtolower($mobil->category->nama_kategori ?? '') }}"
                      data-search="{{ strtolower($mobil->merek . ' ' . $mobil->model) }}">
                     
                     <div class="card card-mobil-ice h-100 shadow-sm border-0 position-relative">
-                        <div class="status-overlay">
-                            @if($tersedia > 0)
-                                <span class="badge badge-ice status-ready"><i class="fas fa-snowflake mr-1"></i> {{ $tersedia }} Ready</span>
-                            @else
-                                <span class="badge badge-ice status-full"><i class="fas fa-lock mr-1"></i> Full</span>
-                            @endif
-                        </div>
-
+<div class="status-overlay">
+    @if($mobil->units->where('status', 'rusak')->count() > 0 && $tersedia == 0)
+        <span class="badge badge-ice bg-warning text-dark"><i class="fas fa-tools mr-1"></i> Rusak</span>
+    @elseif($tersedia > 0)
+        <span class="badge badge-ice status-ready"><i class="fas fa-snowflake mr-1"></i> {{ $tersedia }} Ready</span>
+    @else
+        <span class="badge badge-ice status-full"><i class="fas fa-lock mr-1"></i> Full</span>
+    @endif
+</div>
                         <div class="mobil-img-container">
-                            <img src="{{ asset('storage/' . $mobil->gambar) }}" class="{{ $tersedia == 0 ? 'grayscale' : '' }}">
-                        </div>
+    {{-- Tambahkan kondisi jika tersedia == 0 --}}
+    <img src="{{ asset('storage/' . $mobil->gambar) }}" class="{{ $tersedia == 0 ? 'grayscale' : '' }}">
+</div>
 
                         <div class="card-body d-flex flex-column p-4">
                             <div class="mb-2 d-flex justify-content-between">
@@ -296,13 +307,18 @@
                                     <span class="text-muted small">/Hari</span>
                                 </div>
                                 
-                                @if($tersedia > 0)
-                                    <a href="{{ route('mobil.show', $mobil->id) }}" class="btn btn-ice btn-block btn-modern shadow-sm">
-                                        SEWA SEKARANG <i class="fas fa-arrow-right ml-1"></i>
-                                    </a>
-                                @else
-                                    <button class="btn btn-light btn-block btn-modern text-muted" disabled>PENUH</button>
-                                @endif
+                              @if($tersedia > 0)
+        <a href="{{ route('mobil.show', $mobil->id) }}" class="btn btn-ice btn-block btn-modern shadow-sm">
+            SEWA SEKARANG <i class="fas fa-arrow-right ml-1"></i>
+        </a>
+    @elseif($mobil->units->where('status', 'rusak')->count() > 0)
+        {{-- Jika ada unit yang rusak dan tidak ada yang tersedia --}}
+        <button class="btn btn-danger btn-block btn-modern" disabled>
+            <i class="fas fa-tools mr-2"></i> RUSAK
+        </button>
+    @else
+        <button class="btn btn-light btn-block btn-modern text-muted" disabled>PENUH</button>
+    @endif
                             </div>
                         </div>
                     </div>
